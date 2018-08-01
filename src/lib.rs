@@ -113,8 +113,11 @@ macro_rules! closure {
     (move || $f:expr) => {
         move || $f
     };
-    (move |$($arg:ident),*| $f:expr) => {
-        move |$($arg),*| $f
+    (move |$($arg:ident $(: $t:ty)*),*| $f:expr) => {
+        move |$($arg $(: $t)*),*| $f
+    };
+    (move |$($arg:ident $(: $t:ty)*),*| $f:expr) => {
+        move |$($arg $(: $t)*),*| $f
     };
     (|| $f:expr) => {
         || $f
@@ -168,7 +171,7 @@ mod test {
         closure();
 
         let string = String::from("move");
-        let closure = closure!(move |x| {
+        let closure = closure!(move |x: usize| {
             string.len() + x
         });
         assert_eq!(5, closure(1));
