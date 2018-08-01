@@ -1,45 +1,127 @@
-/*!
-A macro for capturing variables on a per variable basis.
-
-With this macro it is possible to specifically designate which variables will be captured by which
-method.
-Variables can be either specified to be moved, referenced, mutably referenced or cloned.
-Unspecified variables will automatically be moved.
-
-This avoids having to manually declare references ahead of a move closure in order to prevent
-unwanted moves.
-
-```ignore
-let move_string = String::from("This string should be moved");
-let mut ref_string = String::from("This string will be referenced);
-
-let closure_ref = &mut ref_string;
-let closure = move || {
-    ref_string.push_str(&move_string));
-};
-```
-
-# Syntax
-
-
-```ìgnore
-closure!(
-    [move|ref|ref mut|clone] VARIABLE0, [move|ref|ref mut|clone] VARIABLE1, ... (optional)
-    | ARG0, ARG1, ... (optional) |
-    CLOSURE (expression or statement)
-)
-```
-
-# Example
-
-```rust
-
-```
-
-*/
+//! A macro for capturing variables on a per variable basis.
+//!
+//! With this macro it is possible to specifically designate which variables will be captured by which
+//! method.
+//! Variables can be either specified to be moved, referenced, mutably referenced or cloned.
+//! Unspecified variables will automatically be moved.
+//!
+//! The specifiers for each capture type are:
+//! - move
+//! - ref
+//! - ref mut
+//! - clone
+//!
+//! This avoids having to manually declare references ahead of a move closure in order to prevent
+//! unwanted moves.
+//!
+//! # Examples
+//!
+//! ## Spawning a Thread
+//!
+//! Instead of having to write:
+//!
+//! ```
+//! use std::thread;
+//! use std::sync::{Arc, Barrier, Mutex};
+//!
+//! fn main() {
+//!     let mutex = Arc::new(Mutex::new(Vec::new()));
+//!     let barrier = Arc::new(Barrier::new(2));
+//!
+//!     let vector_clone = Arc::clone(&mutex);
+//!     let barrier_clone = Arc::clone(&barrier);
+//!
+//!     thread::spawn(move || {
+//!         let mut vec = vector_clone.lock().unwrap();
+//!         vec.push(2);
+//!         vec.push(3);
+//!         vec.push(4);
+//!
+//!         barrier_clone.wait();
+//!     });
+//!
+//!     barrier.wait();
+//!     let mut vec = mutex.lock().unwrap();
+//!
+//!     vec.push(1);
+//!     assert_eq!(*vec, &[2, 3, 4, 1]);
+//! }
+//! ```
+//!
+//! You can now write:
+//!
+//! ```
+//! #[macro_use]
+//! extern crate closure;
+//!
+//! use std::thread;
+//! use std::sync::{Arc, Barrier, Mutex};
+//!
+//!
+//! fn main() {
+//!     let mutex = Arc::new(Mutex::new(Vec::new()));
+//!     let barrier = Arc::new(Barrier::new(2));
+//!
+//!     thread::spawn(closure!(clone mutex, clone barrier || {
+//!         let mut vec = mutex.lock().unwrap();
+//!         vec.push(2);
+//!         vec.push(3);
+//!         vec.push(4);
+//!
+//!         barrier.wait();
+//!     }));
+//!
+//!     barrier.wait();
+//!     let mut vec = mutex.lock().unwrap();
+//!
+//!     vec.push(1);
+//!     assert_eq!(*vec, &[2, 3, 4, 1]);
+//! }
+//! ```
+//!
+//! ## Mixing move and reference captures without having to specifically declare the references:
+//!
+//! ```
+//! #[macro_use]
+//! extern crate closure;
+//!
+//! use closure::*;
+//!
+//! fn main() {
+//!     let move_string = String::from("This string should be moved");
+//!     let mut ref_string = String::from("This string will be referenced");
+//!
+//!     let closure = closure!(move move_string, ref mut ref_string || {
+//!         ref_string.push_str(&move_string);
+//!         //move_string is dropped at the end of the scope
+//!     });
+//! }
+//!
+//! ```
+//!
+//! Variable identifiers in the argument position (between the vertical lines) can also be used same
+//! as in regular closures.
+//! Also, for the sake of completeness, the regular closure syntax can be used within the macro as
+//! well.
+//!
+//! # Limitations
+//!
+//! Closure syntax specifying the argument and return types are currently not supported.
 
 #[macro_export]
 macro_rules! closure {
+    (move || $f:expr) => {
+        move || $f
+    };
+    (move |$($arg:ident),*| $f:expr) => {
+        move |$($arg),*| $f
+    };
+    (|| $f:expr) => {
+        || $f
+    };
+    (|$($arg:ident),*| $f:expr) => {
+        |$($arg),*| $f
+    };
     (@inner || $f:expr) => {
         move || $f
     };
@@ -69,25 +151,28 @@ macro_rules! closure {
     }};
 }
 
-fn main() {
-    let x = 5;
-    let mut y = 10;
-    let z = 10;
-
-    let result = {
-        let mut closure = closure!(move x, ref mut y || {
-            *y = 20;
-            x + *y
-        });
-        closure()
-    };
-
-    assert_eq!(result, 25);
-    assert_eq!(y, 20);
-}
-
 #[cfg(test)]
 mod test {
+
+    #[test]
+    fn default_syntax() {
+        let borrow = 5;
+        let closure = closure!(|| assert_eq!(5, borrow));
+        closure();
+
+        let closure = closure!(|x| borrow + x);
+        assert_eq!(25, closure(20));
+
+        let string = String::from("move");
+        let closure = closure!(move || assert_eq!("move", &string));
+        closure();
+
+        let string = String::from("move");
+        let closure = closure!(move |x| {
+            string.len() + x
+        });
+        assert_eq!(5, closure(1));
+    }
 
     #[test]
     fn no_capture() {
@@ -106,7 +191,7 @@ mod test {
         use std::rc::Rc;
 
         let mut string = String::from("initial");
-        let mut closure = closure!(move string || {
+        let closure = closure!(move string || {
             string.push_str(" (appended)");
             string
         });
