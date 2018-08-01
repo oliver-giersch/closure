@@ -1,6 +1,10 @@
 [package]
 name = "closure"
 version = "0.1.0"
-authors = ["oliver <oliver.giersch@googlemail.com>"]
+authors = ["oliver <oliver.giersch@b-tu.de>"]
+description = "A macro for capturing variables on a per variable basis."
+license = "MIT"
+homepage = "https://github.com/oliver-giersch/closure.git"
+repository = "https://github.com/oliver-giersch/closure.git"
 
 [dependencies]
