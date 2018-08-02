@@ -110,45 +110,78 @@
 
 #[macro_export]
 macro_rules! closure {
+    //Default syntax for move closure with return type and arguments specified
+    (move | $($(mut)* $arg:ident $(: $t:ty)*),* | -> $ret:ty { $($code:tt)* }) => {
+        move | $($arg $(: $t)*),* | -> $ret { $($code)* }
+    };
+    //Default syntax for move closure with return type but w/o arguments specified
+    (move || -> $ret:ty { $($code:tt)* }) => {
+        move || -> $ret { $($code)* }
+    };
+    //Default syntax for move closure w/o return type but with arguments specified
+    (move | $($(mut)* $arg:ident $(: $t:ty)*),* | $f:expr) => {
+        move | $($arg $(: $t)*),* | $f
+    };
+    //Default syntax for move closure w/o arguments or return type specified
     (move || $f:expr) => {
         move || $f
     };
-    (move |$($arg:ident $(: $t:ty)*),*| $f:expr) => {
-        move |$($arg $(: $t)*),*| $f
+    //Default syntax for closure with return type and arguments specified
+    (| $($(mut)* $arg:ident $(: $t:ty)*),* | -> $ret:ty { $($code:tt)* }) => {
+        | $($arg $(: $t)*),* | -> $ret { $($code)* }
     };
-    (move |$($arg:ident $(: $t:ty)*),*| $f:expr) => {
-        move |$($arg $(: $t)*),*| $f
+    //Default syntax for closure with return type but w/o arguments specified
+    (|| -> $ret:ty { $($code:tt)* }) => {
+        || -> $ret { $($code)* }
     };
+    //Default syntax for closure w/o return type but with arguments specified
+    (| $($(mut)* $arg:ident $(: $t:ty)*),* | $f:expr) => {
+        | $($arg $(: $t)*),* | $f
+    };
+    //Default syntax for closure w/o arguments or return type specified
     (|| $f:expr) => {
         || $f
     };
-    (|$($arg:ident),*| $f:expr) => {
-        |$($arg),*| $f
+    //Syntax for closure with return type and arguments specified
+    (@inner | $($(mut)* $arg:ident $(: $t:ty)*),* | -> $ret:ty { $($code:tt)* }) => {
+        move | $($arg $(: $t)*),* | -> $ret { $($code)* }
     };
+    //Syntax for closure with return type but w/o arguments specified
+    (@inner || -> $ret:ty { $($code:tt)* }) => {
+        move || -> $ret { $($code)* }
+    };
+    //Syntax for closure w/o return type but with arguments specified
+    (@inner | $($(mut)* $arg:ident $(: $t:ty)*),* | $f:expr) => {
+        move | $($arg $(: $t)*),* | $f
+    };
+    //Syntax for closure w/o arguments or return type specified
     (@inner || $f:expr) => {
         move || $f
     };
-    (@inner |$($arg:ident),*| $f:expr) => {
-        move |$($arg),*| $f
-    };
+    //Capture by move
     (@inner move $var:ident $($tail:tt)*) => {
         closure!(@inner $($tail)*)
     };
+    //Capture by mutable reference
     (@inner ref mut $var:ident $($tail:tt)*) => {
         let $var = &mut $var;
         closure!(@inner $($tail)*)
     };
+    //Capture by reference
     (@inner ref $var:ident $($tail:tt)*) => {
         let $var = &$var;
         closure!(@inner $($tail)*)
     };
+    //Capture by cloning
     (@inner clone $var:ident $($tail:tt)*) => {
         let $var = $var.clone();
         closure!(@inner $($tail)*)
     };
+    //Matches comma between captures
     (@inner , $($tail:tt)*) => {
         closure!(@inner $($tail)*)
     };
+    //Macro Entry point: Anything
     ($($args:tt)*) => {{
         closure!{@inner $($args)*}
     }};
@@ -157,19 +190,89 @@ macro_rules! closure {
 #[cfg(test)]
 mod test {
 
+    struct Foo {
+        bar : usize
+    }
+
+    /*#[test]
+    fn foo() {
+        let foo = Foo { bar: 10 };
+        let closure = closure_alt!(move |x:usize| -> usize {
+            const DEFAULT: u16 = 255;
+
+            #[inline]
+            fn print_const() {
+                println!("DEFAULT = {}", DEFAULT);
+            }
+
+            print_const();
+            let temp = foo.bar * 2;
+            x + foo.bar
+        });
+        assert_eq!(15, closure(5));
+
+        let closure = closure_alt!(move |x: usize| println!("{}", x));
+        closure(100);
+
+        let string = String::from("move");
+        let closure = closure_alt!(move || println!("{}", string));
+        closure();
+    }*/
+
     #[test]
-    fn default_syntax() {
+    fn default_syntax_borrow() {
         let borrow = 5;
         let closure = closure!(|| assert_eq!(5, borrow));
         closure();
+    }
 
-        let closure = closure!(|x| borrow + x);
-        assert_eq!(25, closure(20));
+    #[test]
+    fn default_syntax_borrow_with_argument_and_type() {
+        let borrow = String::from("borrow");
+        let closure = closure!(|x: usize| borrow.len() + x);
+        assert_eq!(25, closure(19));
+        assert_eq!(6, borrow.len());
+    }
 
+    #[test]
+    fn default_syntax_borrow_with_return_type() {
+        let borrow = String::from("borrow");
+        let closure = closure!(|| -> String {
+            let mut result = borrow.clone();
+            result.push_str(" (cloned)");
+            result
+        });
+
+        assert_eq!("borrow (cloned)", &closure());
+        assert_eq!("borrow", &borrow);
+    }
+
+    #[test]
+    fn default_syntax_borrow_with_argument_and_return_type() {
+        /*let closure = closure!(|mut string| -> [String, String] {
+            string.push(" added");
+            let iter = string.split_whitespace();
+            [iter.next().unwrap(), iter.next().unwrap()]
+        });*/
+        let closure = closure!(|mut string: String| -> usize {
+            string.push_str(" added");
+            string.len()
+        });
+
+        let mut string = String::from("something");
+        let result = closure(string);
+        assert_eq!(15, closure(string));
+    }
+
+    #[test]
+    fn default_syntax_move() {
         let string = String::from("move");
         let closure = closure!(move || assert_eq!("move", &string));
         closure();
+    }
 
+    #[test]
+    fn default_syntax_move_with_argument_and_type() {
         let string = String::from("move");
         let closure = closure!(move |x: usize| {
             string.len() + x
@@ -178,9 +281,23 @@ mod test {
     }
 
     #[test]
+    fn default_syntax() {
+        let string = String::from("move");
+        let closure = closure!(move |x: usize| -> usize {
+            string.len() + x
+        });
+        assert_eq!(10, closure(6));
+    }
+
+    #[test]
     fn no_capture() {
         let closure = closure!(|| true);
         assert_eq!(true, closure());
+
+        let closure = closure!(|| -> &str {
+            "return"
+        });
+        assert_eq!("return", closure());
 
         let closure = closure!(|| 5 * 5);
         assert_eq!(25, closure());
@@ -218,10 +335,10 @@ mod test {
         assert_eq!(0, result);
 
         let rc = Rc::new(50);
-        let closure = closure!(clone rc || {
-            assert_eq!(2, Rc::strong_count(&rc));
+        let closure = closure!(clone rc || -> usize {
+            Rc::strong_count(&rc)
         });
-        closure();
+        assert_eq!(2, closure());
     }
 
     #[test]
