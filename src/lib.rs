@@ -106,86 +106,100 @@
 //!
 //! # Limitations
 //!
-//! Closure syntax specifying the argument and return types are currently not supported.
+//! Perhaps unintuitively, when designating a move variable, that variable is only moved if it is
+//! actually used in the closure code.
+
+//#![feature(trace_macros)]
+//#![feature(log_syntax)]
+//trace_macros!(true);
 
 #[macro_export]
 macro_rules! closure {
-    //Default syntax for move closure with return type and arguments specified
-    (move | $($(mut)* $arg:ident $(: $t:ty)*),* | -> $ret:ty { $($code:tt)* }) => {
-        move | $($arg $(: $t)*),* | -> $ret { $($code)* }
-    };
-    //Default syntax for move closure with return type but w/o arguments specified
-    (move || -> $ret:ty { $($code:tt)* }) => {
-        move || -> $ret { $($code)* }
-    };
-    //Default syntax for move closure w/o return type but with arguments specified
-    (move | $($(mut)* $arg:ident $(: $t:ty)*),* | $f:expr) => {
-        move | $($arg $(: $t)*),* | $f
-    };
-    //Default syntax for move closure w/o arguments or return type specified
-    (move || $f:expr) => {
-        move || $f
-    };
-    //Default syntax for closure with return type and arguments specified
-    (| $($(mut)* $arg:ident $(: $t:ty)*),* | -> $ret:ty { $($code:tt)* }) => {
-        | $($arg $(: $t)*),* | -> $ret { $($code)* }
-    };
-    //Default syntax for closure with return type but w/o arguments specified
-    (|| -> $ret:ty { $($code:tt)* }) => {
-        || -> $ret { $($code)* }
-    };
-    //Default syntax for closure w/o return type but with arguments specified
-    (| $($(mut)* $arg:ident $(: $t:ty)*),* | $f:expr) => {
-        | $($arg $(: $t)*),* | $f
-    };
-    //Default syntax for closure w/o arguments or return type specified
-    (|| $f:expr) => {
-        || $f
-    };
-    //Syntax for closure with return type and arguments specified
-    (@inner | $($(mut)* $arg:ident $(: $t:ty)*),* | -> $ret:ty { $($code:tt)* }) => {
-        move | $($arg $(: $t)*),* | -> $ret { $($code)* }
-    };
-    //Syntax for closure with return type but w/o arguments specified
-    (@inner || -> $ret:ty { $($code:tt)* }) => {
-        move || -> $ret { $($code)* }
-    };
-    //Syntax for closure w/o return type but with arguments specified
-    (@inner | $($(mut)* $arg:ident $(: $t:ty)*),* | $f:expr) => {
-        move | $($arg $(: $t)*),* | $f
-    };
-    //Syntax for closure w/o arguments or return type specified
-    (@inner || $f:expr) => {
-        move || $f
-    };
-    //Capture by move
+    // The closure
+    //(@inner $closure:expr) => {
+    //    __as_any!(__as_any!(__transform_into_move_closure!($closure)))
+    //};
+    // Capture by move
     (@inner move $var:ident $($tail:tt)*) => {
         closure!(@inner $($tail)*)
     };
-    //Capture by mutable reference
+    // Capture by mutable reference
     (@inner ref mut $var:ident $($tail:tt)*) => {
         let $var = &mut $var;
         closure!(@inner $($tail)*)
     };
-    //Capture by reference
+    // Capture by reference
     (@inner ref $var:ident $($tail:tt)*) => {
         let $var = &$var;
         closure!(@inner $($tail)*)
     };
-    //Capture by cloning
+    // Capture by cloning
     (@inner clone $var:ident $($tail:tt)*) => {
         let $var = $var.clone();
         closure!(@inner $($tail)*)
     };
-    //Matches comma between captures
+    // Matches comma between captures
     (@inner , $($tail:tt)*) => {
         closure!(@inner $($tail)*)
     };
-    //Macro Entry point: Anything
+    (@inner $($closure:tt)*) => {
+        __assert_closure!($($closure)*);
+        __transform_into_move_closure!($($closure)*)
+    };
+    // Macro entry point (accepts anything)
     ($($args:tt)*) => {{
         closure!{@inner $($args)*}
     }};
 }
+
+#[allow(unused_macros)]
+macro_rules! __assert_closure {
+    (move $($any:tt)*) => {};
+    (| $($any:tt)*) => {};
+    (|| $($any:tt)*) => {};
+    ($($any:tt)*) => {
+        compile_error!(concat!(
+            "The supplied argument is not a closure: `", stringify!($($any)*), "`")
+            );
+    };
+}
+
+#[allow(unused_macros)]
+macro_rules! __transform_into_move_closure {
+    (@ret $($closure:tt)*) => {
+        $($closure)*
+    };
+    (move $($tail:tt)*) => {
+        __transform_into_move_closure!(@ret move $($tail)*)
+    };
+    ($($tail:tt)*) => {
+        //__transform_into_move_closure!(@ret move $($tail)*)
+        __add_move!($($tail)*)
+    };
+}
+
+macro_rules! __add_move {
+    ($($any:tt)*) => {move $($any)*}
+}
+
+/*#[allow(unused_macros)]
+macro_rules! __transform_into_move_closure {
+    (@ret $closure:expr) => {{
+        $closure
+    }};
+    (move $($tail:tt)*) => (
+        __transform_into_move_closure!(@ret move $($tail)*)
+    );
+    (| $($tail:tt)*) => (
+        __transform_into_move_closure!(@ret move | $($tail)*)
+    );
+    (|| $($tail:tt)*) => (
+        __transform_into_move_closure!(@ret move || $($tail)*)
+    );
+    ($($any:tt)*) => (
+        compile_error!(concat!("The supplied argument is not a closure: `", stringify!($($any)*), "`"));
+    );
+}*/
 
 #[cfg(test)]
 mod test {
@@ -249,19 +263,14 @@ mod test {
 
     #[test]
     fn default_syntax_borrow_with_argument_and_return_type() {
-        /*let closure = closure!(|mut string| -> [String, String] {
-            string.push(" added");
-            let iter = string.split_whitespace();
-            [iter.next().unwrap(), iter.next().unwrap()]
-        });*/
-        let closure = closure!(|mut string: String| -> usize {
+        let closure = closure!(|string: &mut String| -> usize {
             string.push_str(" added");
             string.len()
         });
 
         let mut string = String::from("something");
-        let result = closure(string);
-        assert_eq!(15, closure(string));
+        let result = closure(&mut string);
+        assert_eq!(15, result);
     }
 
     #[test]
