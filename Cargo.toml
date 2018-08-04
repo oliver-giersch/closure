@@ -1,6 +1,6 @@
 [package]
 name = "closure"
-version = "0.1.2"
+version = "0.2.0"
 authors = ["oliver <oliver.giersch@b-tu.de>"]
 description = "A macro for capturing variables on a per variable basis."
 license = "MIT"
