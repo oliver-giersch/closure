@@ -1,18 +1,20 @@
 //! A macro for capturing variables on a per variable basis.
 //!
-//! With this macro it is possible to specifically designate which variables will be captured by which
-//! method.
-//! Variables can be either specified to be moved, referenced, mutably referenced or cloned.
-//! Unspecified variables will automatically be moved.
+//! With this macro it is possible to specifically designate which variables
+//! will be captured by which method in a designated capture list.
+//! Variables can be either specified to be moved, referenced, mutably
+//! referenced or transformed using an arbitrary method specifier (e.g.,
+//! `clone`).
+//! Any variables not specifically designated will be moved by default.
 //!
 //! The specifiers for each capture type are:
-//! - move
-//! - ref
-//! - ref mut
-//! - clone
+//! - `move`
+//! - `ref`
+//! - `ref mut`
+//! - $ident (any method identifier without arguments)
 //!
-//! This avoids having to manually declare references ahead of a move closure in order to prevent
-//! unwanted moves.
+//! This avoids having to manually declare references ahead of a move closure in
+//! order to prevent unwanted moves.
 //!
 //! # Examples
 //!
@@ -24,59 +26,53 @@
 //! use std::thread;
 //! use std::sync::{Arc, Barrier, Mutex};
 //!
-//! fn main() {
-//!     let mutex = Arc::new(Mutex::new(Vec::new()));
-//!     let barrier = Arc::new(Barrier::new(2));
+//! let mutex = Arc::new(Mutex::new(Vec::new()));
+//! let barrier = Arc::new(Barrier::new(2));
 //!
-//!     let vector_clone = Arc::clone(&mutex);
-//!     let barrier_clone = Arc::clone(&barrier);
+//! let vector_clone = Arc::clone(&mutex);
+//! let barrier_clone = Arc::clone(&barrier);
 //!
-//!     thread::spawn(move || {
-//!         let mut vec = vector_clone.lock().unwrap();
-//!         vec.push(2);
-//!         vec.push(3);
-//!         vec.push(4);
+//! thread::spawn(move || {
+//!     let mut vec = vector_clone.lock().unwrap();
+//!     vec.push(2);
+//!     vec.push(3);
+//!     vec.push(4);
 //!
-//!         barrier_clone.wait();
-//!     });
+//!     barrier_clone.wait();
+//! });
 //!
-//!     barrier.wait();
-//!     let mut vec = mutex.lock().unwrap();
+//! barrier.wait();
+//! let mut vec = mutex.lock().unwrap();
 //!
-//!     vec.push(1);
-//!     assert_eq!(*vec, &[2, 3, 4, 1]);
-//! }
+//! vec.push(1);
+//! assert_eq!(*vec, &[2, 3, 4, 1]);
 //! ```
 //!
 //! You can now write:
 //!
 //! ```
-//! #[macro_use]
-//! extern crate closure;
-//!
 //! use std::thread;
 //! use std::sync::{Arc, Barrier, Mutex};
 //!
+//! use closure::closure;
 //!
-//! fn main() {
-//!     let mutex = Arc::new(Mutex::new(Vec::new()));
-//!     let barrier = Arc::new(Barrier::new(2));
+//! let mutex = Arc::new(Mutex::new(Vec::new()));
+//! let barrier = Arc::new(Barrier::new(2));
 //!
-//!     thread::spawn(closure!(clone mutex, clone barrier || {
-//!         let mut vec = mutex.lock().unwrap();
-//!         vec.push(2);
-//!         vec.push(3);
-//!         vec.push(4);
-//!
-//!         barrier.wait();
-//!     }));
+//! thread::spawn(closure!(clone mutex, clone barrier, || {
+//!     let mut vec = mutex.lock().unwrap();
+//!     vec.push(2);
+//!     vec.push(3);
+//!     vec.push(4);
 //!
 //!     barrier.wait();
-//!     let mut vec = mutex.lock().unwrap();
+//! }));
 //!
-//!     vec.push(1);
-//!     assert_eq!(*vec, &[2, 3, 4, 1]);
-//! }
+//! barrier.wait();
+//! let mut vec = mutex.lock().unwrap();
+//!
+//! vec.push(1);
+//! assert_eq!(*vec, &[2, 3, 4, 1]);
 //! ```
 //!
 //! ## Moving cloned smart pointers into thread closures
@@ -87,87 +83,79 @@
 //! use std::sync::{Arc, Mutex, Condvar};
 //! use std::thread;
 //!
-//! fn main() {
-//!     let pair = Arc::new((Mutex::new(false), Condvar::new()));
-//!     let pair2 = pair.clone();
+//! let pair = Arc::new((Mutex::new(false), Condvar::new()));
+//! let pair2 = pair.clone();
 //!
-//!     // Inside of our lock, spawn a new thread, and then wait for it to start.
-//!     thread::spawn(move|| {
-//!         let &(ref lock, ref cvar) = &*pair2;
-//!         let mut started = lock.lock().unwrap();
-//!         *started = true;
-//!         // We notify the condvar that the value has changed.
-//!         cvar.notify_one();
-//!     });
-//!
-//!     // Wait for the thread to start up.
-//!     let &(ref lock, ref cvar) = &*pair;
+//! // Inside of our lock, spawn a new thread, and then wait for it to start.
+//! thread::spawn(move|| {
+//!     let &(ref lock, ref cvar) = &*pair2;
 //!     let mut started = lock.lock().unwrap();
-//!     while !*started {
-//!         started = cvar.wait(started).unwrap();
-//!     }
+//!     *started = true;
+//!     // We notify the condvar that the value has changed.
+//!     cvar.notify_one();
+//! });
+//!
+//! // Wait for the thread to start up.
+//! let &(ref lock, ref cvar) = &*pair;
+//! let mut started = lock.lock().unwrap();
+//! while !*started {
+//!     started = cvar.wait(started).unwrap();
 //! }
 //! ```
 //!
-//! The declaration of `pair2` can be avoided:
+//! With `closure!`, the explicit declaration of `pair2` can be avoided:
 //!
 //! ```
-//! #[macro_use]
-//! extern crate closure;
-//!
 //! use std::sync::{Arc, Mutex, Condvar};
 //! use std::thread;
 //!
-//! fn main() {
-//!     let pair = Arc::new((Mutex::new(false), Condvar::new()));
+//! use closure::closure;
 //!
-//!     // Inside of our lock, spawn a new thread, and then wait for it to start.
-//!     thread::spawn(closure!(clone pair || {
-//!         let &(ref lock, ref cvar) = &*pair;
-//!         let mut started = lock.lock().unwrap();
-//!         *started = true;
-//!         // We notify the condvar that the value has changed.
-//!         cvar.notify_one();
-//!     }));
+//! let pair = Arc::new((Mutex::new(false), Condvar::new()));
 //!
-//!     // Wait for the thread to start up.
+//! // Inside of our lock, spawn a new thread, and then wait for it to start.
+//! thread::spawn(closure!(clone pair, || {
 //!     let &(ref lock, ref cvar) = &*pair;
 //!     let mut started = lock.lock().unwrap();
-//!     while !*started {
-//!         started = cvar.wait(started).unwrap();
-//!     }
+//!     *started = true;
+//!     // We notify the condvar that the value has changed.
+//!     cvar.notify_one();
+//! }));
+//!
+//! // Wait for the thread to start up.
+//! let &(ref lock, ref cvar) = &*pair;
+//! let mut started = lock.lock().unwrap();
+//! while !*started {
+//!     started = cvar.wait(started).unwrap();
 //! }
 //! ```
 //!
-//! ## Mixing move and reference captures without having to specifically declare the references
+//! ## Mixing move and reference captures without having to specifically declare
+//! the references
 //!
 //! ```
-//! #[macro_use]
-//! extern crate closure;
+//! use closure::closure;
 //!
-//! use closure::*;
+//! let move_string = String::from("This string should be moved");
+//! let mut ref_string = String::from("This string will be referenced");
 //!
-//! fn main() {
-//!     let move_string = String::from("This string should be moved");
-//!     let mut ref_string = String::from("This string will be referenced");
-//!
-//!     let closure = closure!(move move_string, ref mut ref_string || {
-//!         ref_string.push_str(&move_string);
-//!         //move_string is dropped at the end of the scope
-//!     });
-//! }
-//!
+//! let closure = closure!(move move_string, ref mut ref_string, || {
+//!     ref_string.push_str(&move_string);
+//!     //.. `move_string` is dropped at the end of the scope
+//! });
 //! ```
 //!
-//! Variable identifiers in the argument position (between the vertical lines) and return type
-//! specifications can also be used same as in regular closures.
+//! Variable identifiers in the argument position (i.e., between the vertical
+//! lines) and return type specifications can also be used same as in regular
+//! closures.
 //!
 //! # Limitations
 //!
-//! Perhaps counter-intuitively, when designating a move variable, that variable is only moved if it is
-//! actually used in the closure code.
-//! Also, every closure given to the macro is invariably transformed to a move closure, so
-//! `closure!(|| {...})` will move capture any variables in the closure block.
+//! Perhaps counter-intuitively, when designating a move variable, that variable
+//! is only moved if it is actually used in the closure code.
+//! Also, every closure given to the macro is invariably transformed to a move
+//! closure, so `closure!(|| {...})` will move capture any variables in the
+//! closure block.
 
 //#![feature(trace_macros)]
 //#![feature(log_syntax)]
@@ -189,25 +177,26 @@ macro_rules! closure {
         let $var = &$var;
         closure!(@inner $($tail)*)
     };
-    // Capture by cloning
-    (@inner clone $var:ident $($tail:tt)*) => {
-        let $var = $var.clone();
+    // Capture by IDENT (e.g., clone)
+    (@inner $fn:ident $var:ident $($tail:tt)*) => {
+        let $var = $var.$fn();
         closure!(@inner $($tail)*)
     };
-    // Matches comma between captures
+    // Matches comma (at most one) between captures
     (@inner , $($tail:tt)*) => {
         closure!(@inner $($tail)*)
     };
-    // Matches on the actual closure (with move)
+    // Matches on the actual closure (with move, not permitted)
     (@inner move $($closure:tt)*) => {
-        //__assert_closure!($($closure)*);
-        //move $($closure)*
         compile_error!("keyword `move` not permitted here.");
     };
     // Matches on the actual closure (w/o move)
     (@inner $($closure:tt)*) => {
-        __assert_closure!($($closure)*);
+        $crate::__assert_closure!($($closure)*);
         move $($closure)*
+    };
+    (, $($args:tt)*) => {
+        compile_error!("The closure capture list may not begin with a comma.");
     };
     // Macro entry point (accepts anything)
     ($($args:tt)*) => {{
@@ -230,12 +219,12 @@ macro_rules! __assert_closure {
 #[cfg(test)]
 mod test {
     struct Foo {
-        bar : usize
+        bar: usize,
     }
 
     impl Foo {
-        fn new(bar: usize) -> Self {
-            Foo { bar }
+        fn new(val: usize) -> Self {
+            Foo { bar: val }
         }
 
         fn bar(&self) -> usize {
@@ -246,47 +235,37 @@ mod test {
     #[test]
     fn no_capture_one_line_1() {
         let closure = closure!(|| true);
-        assert_eq!(true, closure());
+        assert!(closure());
     }
 
     #[test]
     fn no_capture_one_line_2() {
-        let closure = closure!(|| assert!(true));
-        closure();
-    }
-
-    #[test]
-    fn no_capture_one_line_3() {
         let closure = closure!(|| 5 * 5);
-        assert_eq!(25, closure());
+        assert_eq!(closure(), 25);
     }
 
     #[test]
     fn no_capture_with_arg() {
         let closure = closure!(|x| x * x);
-        assert_eq!(25, closure(5));
+        assert_eq!(closure(5), 25);
     }
 
     #[test]
     fn no_capture_with_arg_type_hint_1() {
         let closure = closure!(|x: usize| x * x);
-        assert_eq!(25, closure(5));
+        assert_eq!(closure(5), 25);
     }
 
     #[test]
     fn no_capture_with_arg_type_hint_2() {
-        let closure = closure!(|x: usize| {
-            x * x
-        });
-        assert_eq!(25, closure(5));
+        let closure = closure!(|x: usize| { x * x });
+        assert_eq!(closure(5), 25);
     }
 
     #[test]
     fn no_capture_with_arg_and_return_type() {
-        let closure = closure!(|x: usize| -> usize {
-            x * x
-        });
-        assert_eq!(25, closure(5));
+        let closure = closure!(|x: usize| -> usize { x * x });
+        assert_eq!(closure(5), 25);
     }
 
     #[test]
@@ -298,43 +277,40 @@ mod test {
             string.len()
         });
 
-        let string = String::from("xxxx");
-        assert_eq!(10, closure(string, 6));
+        assert_eq!(closure(String::from("xxxx"), 6), 10);
     }
 
     #[test]
     fn no_capture_w_return_type() {
-        let closure = closure!(|| -> &str {
-            "result"
-        });
-        assert_eq!("result", closure());
+        let closure = closure!(|| -> &str { "result" });
+        assert_eq!(closure(), "result");
     }
 
     #[test]
     fn single_capture_move() {
         let string = String::from("move");
-        let closure = closure!(move string || string.len());
-        assert_eq!(4, closure());
+        let closure = closure!(move string, || string.len());
+        assert_eq!(closure(), 4);
     }
 
     #[test]
     fn single_capture_move_mut() {
         let mut string = String::from("move");
-        let closure = closure!(move string || {
+        let closure = closure!(move string, || {
             string.clear();
             string.push_str("moved");
             string
         });
 
-        assert_eq!("moved", &closure());
+        assert_eq!(&closure(), "moved");
     }
 
     #[test]
     fn single_capture_ref() {
-        let foo = Foo::new(50);
-        let closure = closure!(ref foo || {
-            let bar = foo.bar();
-            assert_eq!(50, bar);
+        let val = Foo::new(50);
+        let closure = closure!(ref val, || {
+            let inner = val.bar();
+            assert_eq!(inner, 50);
         });
 
         closure();
@@ -342,16 +318,14 @@ mod test {
 
     #[test]
     fn single_capture_mut_ref() {
-        let mut foo = Foo::new(100);
+        let mut val = Foo::new(100);
 
-        {
-            let mut closure = closure!(ref mut foo || {
-                foo.bar += 10;
-            });
-            closure();
-        }
+        let mut closure = closure!(ref mut val, || {
+            val.bar += 10;
+        });
+        closure();
 
-        assert_eq!(110, foo.bar);
+        assert_eq!(val.bar, 110);
     }
 
     #[test]
@@ -359,7 +333,7 @@ mod test {
         use std::rc::Rc;
 
         let rc = Rc::new(50);
-        let closure = closure!(clone rc || -> usize {
+        let closure = closure!(clone rc, || -> usize {
             Rc::strong_count(&rc)
         });
         assert_eq!(2, closure());
@@ -367,13 +341,14 @@ mod test {
 
     #[test]
     fn single_capture_with_arg() {
-        let mut foo = Foo::new(10);
-        let mut closure = closure!(ref mut foo |x: usize| {
-            foo.bar += x;
-            foo.bar
+        let mut val = Foo::new(10);
+        let mut closure = closure!(ref mut val, |x: usize| {
+            val.bar += x;
+            val.bar
         });
 
-        assert_eq!(15, closure(5));
+        assert_eq!(closure(5), 15);
+        assert_eq!(val.bar, 15);
     }
 
     #[test]
@@ -382,7 +357,7 @@ mod test {
         let x = 5;
         let mut y = 10;
 
-        let mut closure = closure!(move string, ref x, ref mut y || {
+        let mut closure = closure!(move string, ref x, ref mut y, || {
             string.push_str(" moved");
             assert_eq!("string moved", &string);
             assert_eq!(15, *x + *y);
@@ -402,10 +377,22 @@ mod test {
 
         let second = String::from("Second");
         let third = String::from("Third");
-        let closure = closure!(move second, move third |first| {
+        let closure = closure!(move second, move third, |first| {
             format!("{} {} {}", first, second, third)
         });
 
         take_closure(closure);
+    }
+
+    #[test]
+    fn arbitrary_fn_capture() {
+        let str = "string";
+        let closure = closure!(to_owned str, || {
+            assert_eq!(String::from("string"), str.clone());
+            str
+        });
+
+        let owned: String = closure();
+        assert_eq!(&owned, str);
     }
 }

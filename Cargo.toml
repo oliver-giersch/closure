@@ -1,12 +1,11 @@
 [package]
 name = "closure"
-version = "0.2.0"
-authors = ["oliver <oliver.giersch@b-tu.de>"]
 description = "A macro for capturing variables on a per variable basis."
+version = "0.3.0"
+authors = ["oliver <oliver.giersch@b-tu.de>"]
 license = "MIT"
-homepage = "https://github.com/oliver-giersch/closure.git"
-repository = "https://github.com/oliver-giersch/closure.git"
-keywords = ["closure", "capture", "macro"]
 readme = "README.md"
-
-[dependencies]
+repository = "https://github.com/oliver-giersch/closure.git"
+edition = "2018"
+keywords = ["closure", "capture", "macro"]
+exclude = [".travis.yml"]
