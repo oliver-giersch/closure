@@ -161,6 +161,45 @@
 //#![feature(log_syntax)]
 //trace_macros!(true);
 
+#[macro_export(local_inner_macros)]
+macro_rules! closure_ext {
+    (@inner move $($ids:ident).+ , $($tail:tt)*) => {
+        let $crate::__extract_last_ident!($($ids).+) = $($ids).+;
+        closure_ext!(@inner $($tail)*) 
+    };
+    (@inner ref $($ids:ident).+ , $($tail:tt)*) => {
+        let $crate::__extract_last_ident!($($ids).+) = & $($ids).+;
+        closure_ext!(@inner $($tail)*) 
+    };
+    (@inner ref mut $($ids:ident).+ , $($tail:tt)*) => {
+        let $crate::__extract_last_ident!($($ids).+) = &mut $($ids).+;
+        closure_ext!(@inner $($tail)*)
+    };
+    (@inner $fn:ident $($ids:ident).+ , $($tail:tt)*) => {
+        let $crate::__extract_last_ident!($($ids).+) = $($ids).+.$fn();
+        closure_ext!(@inner $($tail)*)
+    };
+    (@inner , $($tail:tt)*) => {
+        closure_ext!(@inner $($tail)*)
+    };
+    // matches on the actual closure (w/o move)
+    (@inner $($closure:tt)*) => {
+        $crate::__assert_closure!($($closure)*);
+        move $($closure)*
+    };    
+    // macro entry point (accepts anything)
+    ($($args:tt)*) => {{
+        closure_ext! { @inner $($args)* }
+    }};
+}
+
+#[macro_export(local_inner_macros)]
+#[doc(hidden)]
+macro_rules! __extract_last_ident {
+    ($last:ident) => { $last };
+    ($ignore:ident.$($tail:ident).+) => { $crate::__extract_last_ident!($($tail).+) };
+}
+
 #[macro_export]
 macro_rules! closure {
     // Capture by move
@@ -196,7 +235,7 @@ macro_rules! closure {
         move $($closure)*
     };
     (, $($args:tt)*) => {
-        compile_error!("The closure capture list may not begin with a comma.");
+        compile_error!("closure capture list may not begin with a comma");
     };
     // Macro entry point (accepts anything)
     ($($args:tt)*) => {{
@@ -204,9 +243,10 @@ macro_rules! closure {
     }};
 }
 
-#[macro_export]
+#[macro_export(local_inner_macros)]
+#[doc(hidden)]
 macro_rules! __assert_closure {
-    (move $($any:tt)*) => {};
+    (move $($any:tt)*) => { compile_error!("keyword `move` not permitted here") };
     (| $($any:tt)*) => {};
     (|| $($any:tt)*) => {};
     ($($any:tt)*) => {
@@ -219,20 +259,36 @@ macro_rules! __assert_closure {
 #[cfg(test)]
 mod test {
     struct Foo {
-        bar: usize,
+        bar: Bar,
+    }
+
+    struct Bar {
+        baz: i32,
     }
 
     impl Foo {
-        fn new(val: usize) -> Self {
-            Foo { bar: val }
-        }
-
-        fn bar(&self) -> usize {
-            self.bar
+        fn new(baz: i32) -> Self {
+            Foo { bar: Bar { baz } }
         }
     }
 
     #[test]
+    fn closure_ext() {
+        let foo = Foo::new(0);
+        let goo = 1;
+        let arg = 2;
+        let closure = closure_ext!(ref foo.bar.baz, ref goo, |arg: &i32| *baz == 0 && *goo == 1 && *arg == 2);
+        assert!(closure(&arg));
+
+        let closure = closure_ext!(|| true);
+        assert!(closure());
+
+        let var = "hello";
+        let closure = closure_ext!(to_string var, || var == "hello");
+        assert!(closure());
+    }
+
+    /*#[test]
     fn no_capture_one_line_1() {
         let closure = closure!(|| true);
         assert!(closure());
@@ -394,5 +450,5 @@ mod test {
 
         let owned: String = closure();
         assert_eq!(&owned, str);
-    }
+    }*/
 }
