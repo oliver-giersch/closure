@@ -1,6 +1,13 @@
 # closure! - A macro for individually capturing variables
 
-This crate provides a macro which lets you write closures that can capture individually either by moving, referencing, mutably referencing of cloning.
+[![Latest version](https://img.shields.io/crates/v/closure.svg)](
+https://crates.io/crates/closure)
+[![Documentation](https://docs.rs/closure/badge.svg)](https://docs.rs/closure)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](
+https://github.com/oliver-giersch/closure)
+
+This crate provides a macro which lets you write closures that can capture
+individually either by moving, referencing, mutably referencing of cloning.
 
 ## Usage
 
@@ -8,31 +15,20 @@ Start by adding an entry to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-closure = "0.2.0"
-```
-
-Then import the crate with macro use enabled:
-```rust
-#[macro_use]
-extern crate closure;
+closure = "0.3.0"
 ```
 
 Then you can write closures like so:
 ```rust
-let string = String::from("move");
+use closure::closure;
+
+let string = "move".to_string();
 let x = 10;
 let mut y = 20;
 let rc = Rc::new(5);
 
-let closure = closure!(move string, ref x, ref mut y, clone rc || {
+let closure = closure!(move string, ref x, ref mut y, clone rc, |arg: i32| {
     ...
 });
 
 ```
-
-Unlike standard Rust closures, closures used in the `closure!` macro will alays be move closures, i.e.
-unless specified otherwise, any variable will be moved into the closure.
-
-The macro accepts any valid Rust closure in the appropriate position. The only exception is, that no `move`
-specifier is allowed before the `| ... |` tokens, because the resulting closure will automatically be a move
-closure, anyways.

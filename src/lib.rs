@@ -1,20 +1,102 @@
 //! A macro for capturing variables on a per variable basis.
 //!
 //! With this macro it is possible to specifically designate which variables
-//! will be captured by which method in a designated capture list.
+//! will be captured by which method in a designated *capture list*.
 //! Variables can be either specified to be moved, referenced, mutably
-//! referenced or transformed using an arbitrary method specifier (e.g.,
+//! referenced or transformed using an arbitrary method identifier (e.g.,
 //! `clone`).
 //! Any variables not specifically designated will be moved by default.
 //!
-//! The specifiers for each capture type are:
-//! - `move`
-//! - `ref`
-//! - `ref mut`
-//! - $ident (any method identifier without arguments)
+//! The syntax for each type of capture type is:
+//! - `move var` (moves `var` into the closure)
+//! - `ref var` (borrows `var`)
+//! - `ref mut var` (mutably borrows `var`)
+//! - `$IDENT var` (transforms `var` where $IDENT is any identifier for a method
+//! with a `self` receiver and no further arguments)
 //!
-//! This avoids having to manually declare references ahead of a move closure in
-//! order to prevent unwanted moves.
+//! ## Move Binding
+//!
+//! To capture a variable by moving it into the closure, use `move` or
+//! `move mut` to create a mutable binding:
+//!
+//! ```
+//! # use closure::closure;
+//! let first = "first".to_string();
+//! let second = "second".to_string();
+//!
+//! let closure = closure!(move first, move mut second, || {
+//!     // creates an immutable `first` and a mutable `second`
+//!     // binding...
+//!     # assert_eq!(first, "first");
+//!     # second.clear();
+//!     # assert_eq!(second, "");
+//! });
+//! ```
+//!
+//! ## Reference Binding
+//!
+//! To capture a variable by borrowing it in the closure, use `ref` or `ref mut`
+//! for a mutable borrow, respectively.
+//!
+//! ```
+//! # use closure::closure;
+//! let mut a = 1;
+//! let b = 0;
+//!
+//! let mut closure = closure!(ref mut a, ref b, || {
+//!     *a = 0;
+//!     assert_eq!(*a, *b);
+//! });
+//! # closure();
+//! ```
+//!
+//! Notice, that is also possible to capture named members of a `struct`,
+//! including in `struct` methods:
+//!
+//! ```
+//! # use closure::closure;
+//! struct Foo {
+//!     bar: i32,
+//! }
+//!
+//! impl Foo {
+//!     fn print(&self) {
+//!         // here a binding `let bar = &self.bar` will be
+//!         // created for the closure
+//!         closure!(ref self.bar, || println!("{}", bar))();
+//!     }
+//! }
+//! ```
+//!
+//! This also applies to `move` captures, but the usual rules for destructuring
+//! apply.
+//!
+//! ## $IDENT-transform Binding
+//!
+//! Capturing a variable by an arbitrary identifier of a method with any `self`
+//! reciever (e.g., `self`, `&self`, `&mut self`, etc.) and no other arguments,
+//! creates a binding of the same name but the with the transformation method
+//! applied to the original variable.
+//! The most common use case for this type of capture is probably for calling
+//! `clone()` on a variable, but any method conforming to the aforementioned
+//! rules is also possible, such as `to_string`, `to_owned`, `into_iter`, etc.
+//!
+//! ```
+//! # use closure::closure;
+//! let first = "first".to_string();
+//! let second = "second".to_string();
+//!
+//! let mut closure = closure!(clone first, clone mut second, || {
+//!     // creates two bindings `first` and `second`,
+//!     // the latter is mutable.
+//!     println!("cloned: {}", first);
+//!     second.clear();
+//!     # assert_eq!(second, "");
+//! });
+//!
+//! closure();
+//! println!("the original {} and {} were not moved", first, second);
+//! ```
 //!
 //! # Examples
 //!
@@ -48,7 +130,8 @@
 //! assert_eq!(*vec, &[2, 3, 4, 1]);
 //! ```
 //!
-//! You can now write:
+//! Using `closure!` it becomes possible to avoid having to manually create
+//! bindings for each cloned `Arc`:
 //!
 //! ```
 //! use std::thread;
@@ -77,7 +160,7 @@
 //!
 //! ## Moving cloned smart pointers into thread closures
 //!
-//! From the documentation of `std::sync::Condvar`:
+//! From the documentation of [`Condvar`][std::sync::Condvar]:
 //!
 //! ```
 //! use std::sync::{Arc, Mutex, Condvar};
@@ -131,18 +214,23 @@
 //! ```
 //!
 //! ## Mixing move and reference captures without having to specifically declare
-//! the references
+//! the references which should not be moved
 //!
 //! ```
-//! use closure::closure;
+//! # use closure::closure;
+//! let move_string = "this string will be moved".to_string();
+//! let mut ref_string = "this string will be borrowed".to_string();
 //!
-//! let move_string = String::from("This string should be moved");
-//! let mut ref_string = String::from("This string will be referenced");
-//!
-//! let closure = closure!(move move_string, ref mut ref_string, || {
+//! let mut closure = closure!(move move_string, ref mut ref_string, || {
 //!     ref_string.push_str(&move_string);
 //!     //.. `move_string` is dropped at the end of the scope
 //! });
+//!
+//! # closure();
+//! # assert_eq!(
+//! #    ref_string,
+//! #    "this string will be borrowedthis string will be moved"
+//! # );
 //! ```
 //!
 //! Variable identifiers in the argument position (i.e., between the vertical
@@ -151,12 +239,15 @@
 //!
 //! # Limitations
 //!
-//! Perhaps counter-intuitively, when designating a move variable, that variable
-//! is only moved if it is actually used in the closure code.
-//! Also, every closure given to the macro is invariably transformed to a move
-//! closure, so `closure!(|| {...})` will move capture any variables in the
-//! closure block.
+//! Any closure passed to the macro will implicitly become a `move` closure, so
+//! even variables that don't appear in the capture list but are used in the
+//! closure itself will also be moved into it.
 
+/// A macro that allows specifying a capture list for a closure that is passed
+/// to the macro.
+///
+/// See the [crate-level](index.html) docs for further information on syntax and
+/// examples.
 #[macro_export(local_inner_macros)]
 macro_rules! closure {
     (@inner move $($ids:ident).+ , $($tail:tt)*) => {
@@ -177,6 +268,10 @@ macro_rules! closure {
     };
     (@inner $fn:ident $($ids:ident).+ , $($tail:tt)*) => {
         let $crate::__extract_last_ident!($($ids).+) = $($ids).+.$fn();
+        closure!(@inner $($tail)*)
+    };
+    (@inner $fn:ident mut $($ids:ident).+ , $($tail:tt)*) => {
+        let $crate::__extract_last_ident!(mut $($ids).+) = $($ids).+.$fn();
         closure!(@inner $($tail)*)
     };
     (@inner , $($tail:tt)*) => {
