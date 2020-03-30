@@ -19,6 +19,7 @@ closure = "0.3.0"
 ```
 
 Then you can write closures like so:
+
 ```rust
 use closure::closure;
 
