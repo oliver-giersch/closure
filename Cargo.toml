@@ -1,0 +1,9 @@
+[package]
+name = "rarb"
+version = "0.1.0"
+authors = ["oliver-giersch <oliver.giersch@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+tokio = { version = "1.0", features = ["full"] }
+web3 = { git = "https://github.com/tomusdrw/rust-web3", features = ["ws-tls-tokio"] }
