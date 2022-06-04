@@ -1,3 +1,7 @@
+# Looking For Maintainers
+
+This crate is no longer maintained. Feel free to contact the author if you'd like to continue developing it.
+
 # closure! - A macro for individually capturing variables
 
 [![Latest version](https://img.shields.io/crates/v/closure.svg)](
